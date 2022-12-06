@@ -1,0 +1,60 @@
+package eber.loreto.photogallery
+
+private const val TAG = "PhotoGalleryViewModel"
+class PhotoGalleryViewModel : ViewModel() {
+    private val photoRepository = PhotoRepository()
+    private val preferencesRepository = PreferencesRepository.get()
+
+    private val _uiState: MutableStateFlow<PhotoGalleryUiState> =
+        MutableStateFlow(PhotoGalleryUiState())
+    val uiState: StateFlow<PhotoGalleryUiState>
+        get() = _uiState.asStateFlow()
+    init {
+        viewModelScope.launch {
+            preferencesRepository.storedQuery.collectLatest { storedQuery ->
+            try {
+                //val items = photoRepository. searchPhotos("planets")
+                val items = fetchGalleryItems(storedQuery)
+                _uiState.update { oldState ->
+                    oldState.copy(
+                        images = items,
+                        query = storedQuery
+                    )
+                }
+                viewModelScope.launch {
+                    preferencesRepository.isPolling.collect { isPolling ->
+                        _uiState.update { it.copy(isPolling = isPolling) }
+                    }
+                }
+
+
+                _galleryItems.value = items
+            } catch (ex: Exception) {
+                Log.e(TAG, "Failed to fetch gallery items", ex)
+            }
+        }
+    }
+    fun setQuery(query: String) {
+        //viewModelScope.launch { _galleryItems.value = fetchGalleryItems(query) }
+        viewModelScope.launch { preferencesRepository.setStoredQuery(query) }
+
+    }
+        fun toggleIsPolling() {
+            viewModelScope.launch {
+                preferencesRepository.setPolling(!uiState.value.isPolling)
+            }
+        }
+    private suspend fun fetchGalleryItems(query: String): List<GalleryItem> {
+        return if (query.isNotEmpty()) {
+            photoRepository.searchPhotos(query)
+        } else {
+            photoRepository.fetchPhotos()
+        }
+    }
+        data class PhotoGalleryUiState(
+            val images: List<GalleryItem> = listOf(),
+            val query: String = "",
+            val isPolling: Boolean = false,
+
+            )
+}
